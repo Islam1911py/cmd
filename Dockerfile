@@ -5,21 +5,18 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
 
-RUN npm install
+RUN npm install prisma@6 @prisma/client@6
 RUN npx prisma generate
 
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-
 ENV NEXT_TELEMETRY_DISABLED=1
-
 RUN npm run build
 
 FROM node:20-alpine AS runner
 WORKDIR /app
-
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
@@ -30,10 +27,14 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-USER nextjs
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
+USER nextjs
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "server.js"]
+# تشغيل الـ Push أوتوماتيكياً بنسخة 6 المضمونة
+CMD ["sh", "-c", "npx prisma db push --schema ./prisma/schema.prisma && node server.js"]
